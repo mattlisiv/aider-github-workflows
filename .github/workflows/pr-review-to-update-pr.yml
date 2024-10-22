@@ -1,14 +1,24 @@
 name: PR Review to Update PR
 
 on:
-  issue_comment:
-    types: [created]
-  pull_request_review:
-    types: [submitted]
+  workflow_call:
+    inputs:
+      pull-request-number:
+        description: "Pull Request number to update"
+        required: true
+        type: number
+      model:
+        description: "Model to use for applying changes"
+        required: false
+        type: string
+        default: "gpt-4-1106-preview"
+    secrets:
+      openai_api_key:
+        description: "OpenAI API Key"
+        required: true
 
 jobs:
   update-pr-from-review:
-    if: github.event.pull_request_review.state == 'approved' || github.event.comment.body.contains('change')
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -18,7 +28,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.ref }}
 
       - name: Extract Review Comments
         uses: actions/github-script@v7
@@ -26,7 +36,7 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const prNumber = context.payload.pull_request.number;
+            const prNumber = ${{ inputs['pull-request-number'] }};
 
             // Get all review comments
             const reviewComments = await github.rest.pulls.listReviewComments({
@@ -62,8 +72,8 @@ jobs:
         uses: mirrajabi/aider-github-action@main
         timeout-minutes: 15
         with:
-          branch: ${{ github.event.pull_request.head.ref }}
-          model: gpt-4-1106-preview
+          branch: ${{ github.ref }}
+          model: ${{ inputs['model'] }}
           aider_args: '--yes --message "${{ steps.create_prompt.outputs.result }}"'
           openai_api_key: ${{ secrets.openai_api_key }}
 
@@ -71,14 +81,14 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git push origin ${{ github.event.pull_request.head.ref }}
+          git push origin ${{ github.ref }}
 
       - name: Comment on PR
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
-            const prNumber = context.payload.pull_request.number;
+            const prNumber = ${{ inputs['pull-request-number'] }};
 
             await github.rest.issues.createComment({
               owner,
